@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FileAnalyser</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #1a1a2e; color: #eee; overflow: hidden; }
+        #app { width: 100vw; height: 100vh; display: flex; flex-direction: column; }
+        #header { background: rgba(0,0,0,0.5); padding: 15px 20px; display: flex; align-items: center; gap: 15px; z-index: 100; }
+        #header h1 { font-size: 18px; color: #fff; }
+        #path-input { flex: 1; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; padding: 8px 12px; border-radius: 5px; font-size: 14px; }
+        #path-input:focus { outline: none; border-color: #4fc3f7; }
+        #btn-scan { background: #4fc3f7; border: none; padding: 8px 20px; border-radius: 5px; color: #000; font-weight: bold; cursor: pointer; }
+        #btn-scan:hover { background: #81d4fa; }
+        #btn-scan:disabled { background: #555; cursor: not-allowed; }
+        #drives { display: flex; gap: 5px; }
+        .drive-btn { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; padding: 8px 12px; border-radius: 5px; cursor: pointer; font-size: 12px; }
+        .drive-btn:hover { background: rgba(255,255,255,0.2); }
+        #status-bar { background: rgba(0,0,0,0.3); padding: 8px 20px; font-size: 12px; color: #aaa; display: flex; justify-content: space-between; }
+        #chart-container { flex: 1; display: flex; align-items: center; justify-content: center; position: relative; }
+        #loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #4fc3f7; font-size: 18px; display: none; }
+        #loading .spinner { display: inline-block; animation: spin 1s linear infinite; margin-right: 10px; }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+        #info { position: fixed; top: 80px; left: 20px; background: rgba(0,0,0,0.8); padding: 15px 20px; border-radius: 10px; font-size: 14px; line-height: 1.8; z-index: 100; display: none; max-width: 400px; }
+        #info h2 { font-size: 16px; margin-bottom: 8px; color: #fff; word-break: break-all; }
+        #info .size { font-size: 24px; font-weight: bold; color: #ffd700; }
+        #info .path { color: #888; font-size: 12px; word-break: break-all; margin-top: 5px; }
+        #info .type { color: #4fc3f7; }
+        #info .close-btn { position: absolute; top: 10px; right: 15px; background: none; border: none; color: #888; font-size: 20px; cursor: pointer; }
+        #info .close-btn:hover { color: #fff; }
+        #info .expand-btn { background: #ffd700; border: none; padding: 8px 16px; border-radius: 5px; color: #000; margin-top: 10px; cursor: pointer; font-size: 12px; }
+        #info .expand-btn:hover { background: #ffeb3b; }
+        #legend { position: fixed; bottom: 20px; left: 20px; background: rgba(0,0,0,0.8); padding: 15px; border-radius: 10px; max-height: 300px; overflow-y: auto; z-index: 100; min-width: 200px; }
+        #legend h3 { font-size: 14px; margin-bottom: 10px; color: #fff; }
+        #legend .entry { display: flex; align-items: center; margin: 5px 0; font-size: 12px; }
+        #legend .color { width: 12px; height: 12px; border-radius: 2px; margin-right: 8px; flex-shrink: 0; }
+        #breadcrumb { position: fixed; top: 70px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.7); padding: 8px 20px; border-radius: 20px; font-size: 12px; z-index: 100; max-width: 50vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        #breadcrumb .sep { color: #555; margin: 0 5px; }
+        #breadcrumb .crumb { color: #ffd700; cursor: pointer; }
+        #breadcrumb .crumb:hover { text-decoration: underline; }
+        #breadcrumb .root { color: #aaa; cursor: pointer; }
+        #breadcrumb .root:hover { text-decoration: underline; }
+        #progress-bar { position: fixed; bottom: 0; left: 0; right: 0; height: 4px; background: rgba(0,0,0,0.5); }
+        #progress-bar .fill { height: 100%; background: #4fc3f7; width: 0%; transition: width 0.3s; }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div id="header">
+            <h1>FileAnalyser</h1>
+            <div id="drives"></div>
+            <input type="text" id="path-input" placeholder="Enter path to scan (e.g. C:\ or /home)">
+            <button id="btn-scan" onclick="startScan()">Scan</button>
+        </div>
+        <div id="status-bar">
+            <span id="status-text">Ready</span>
+            <span id="status-stats"></span>
+        </div>
+        <div id="chart-container">
+            <div id="loading"><span class="spinner">&#9696;</span>Scanning...</div>
+            <div id="chart"></div>
+        </div>
+        <div id="breadcrumb"><span class="root" onclick="resetView()">Root</span></div>
+        <div id="info">
+            <button class="close-btn" onclick="closeInfo()">&times;</button>
+            <h2 id="info-name">-</h2>
+            <div class="size" id="info-size">-</div>
+            <div class="type" id="info-type">-</div>
+            <div class="path" id="info-path">-</div>
+            <button class="expand-btn" id="expand-btn" onclick="expandNode()">Scan this folder</button>
+        </div>
+        <div id="legend">
+            <h3>File Types</h3>
+            <div id="legend-items"></div>
+        </div>
+        <div id="progress-bar"><div class="fill" id="progress-fill"></div></div>
+    </div>
+
+    <script>
+        let currentPath = null;
+        let currentTree = null;
+        let initialDepth = 5;
+        let zoomStack = [];
+        let expandedNodes = new Set();
+
+        let svg, arc, root, hierarchy;
+        const width = Math.min(window.innerWidth, window.innerHeight) * 0.85;
+        const radius = width / 2;
+
+        function formatSize(bytes) {
+            if (bytes === 0) return "0 B";
+            const units = ["B", "KB", "MB", "GB", "TB"];
+            let idx = 0;
+            let size = bytes;
+            while (size >= 1024 && idx < units.length - 1) { size /= 1024; idx++; }
+            return size.toFixed(idx === 0 ? 0 : 2) + " " + units[idx];
+        }
+
+        function getColor(name, index) {
+            const colors = ['#ff6b6b','#4ecdc4','#45b7d1','#96ceb4','#ffeaa7','#dfe6e9','#fd79a8','#a29bfe','#6c5ce7','#00b894','#e17055','#74b9ff','#a3e635','#f97316','#8b5cf6','#06b6d4','#ec4899','#84cc16','#14b8a6','#f43f5e'];
+            return colors[index % colors.length];
+        }
+
+        async function loadDrives() {
+            try {
+                const resp = await fetch('/api/drives');
+                const data = await resp.json();
+                const container = document.getElementById('drives');
+                container.innerHTML = '';
+                data.drives.forEach(drive => {
+                    const btn = document.createElement('button');
+                    btn.className = 'drive-btn';
+                    btn.textContent = drive.replace('\\', '');
+                    btn.onclick = () => {
+                        document.getElementById('path-input').value = drive;
+                        startScan();
+                    };
+                    container.appendChild(btn);
+                });
+            } catch (e) { console.error(e); }
+        }
+
+        async function startScan() {
+            const path = document.getElementById('path-input').value.trim();
+            if (!path) return;
+
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('btn-scan').disabled = true;
+            document.getElementById('status-text').textContent = 'Scanning...';
+            zoomStack = [];
+            expandedNodes = new Set();
+
+            try {
+                const resp = await fetch(`/api/scan?path=${encodeURIComponent(path)}&depth=${initialDepth}`);
+                const data = await resp.json();
+
+                if (data.error) { alert(data.error); return; }
+
+                currentPath = path;
+                currentTree = data.tree;
+                renderSunburst(currentTree);
+                updateBreadcrumb();
+                updateLegend(currentTree);
+                document.getElementById('status-text').textContent = 'Scan complete';
+                document.getElementById('status-stats').textContent =
+                    `${formatSize(data.scan_info.total_size)} | ${data.scan_info.total_files} files | ${data.scan_info.total_dirs} dirs`;
+            } catch (e) {
+                alert('Error: ' + e.message);
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('btn-scan').disabled = false;
+            }
+        }
+
+        async function expandNode() {
+            if (!currentPath) return;
+            const node = window.selectedNode;
+            if (!node || node.data.type !== 'dir') return;
+
+            const nodePath = node.data.path;
+            const nodeKey = nodePath;
+
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('status-text').textContent = `Scanning ${node.data.name}...`;
+
+            try {
+                const resp = await fetch(`/api/scan_dir?path=${encodeURIComponent(nodePath)}`);
+                const data = await resp.json();
+
+                if (data.error) { alert(data.error); return; }
+
+                expandedNodes.add(nodeKey);
+
+                replaceNode(currentTree, nodeKey, data.tree);
+                renderSunburst(currentTree);
+                updateBreadcrumb();
+                updateLegend(currentTree);
+                document.getElementById('status-text').textContent = 'Scan complete';
+            } catch (e) {
+                alert('Error: ' + e.message);
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+
+        function replaceNode(tree, nodePath, newData) {
+            if (tree.path === nodePath) {
+                tree.children = newData.children;
+                tree.size = newData.size;
+                tree.file_types = newData.file_types;
+                return true;
+            }
+            if (tree.children) {
+                for (const child of tree.children) {
+                    if (replaceNode(child, nodePath, newData)) return true;
+                }
+            }
+            return false;
+        }
+
+        function renderSunburst(data) {
+            const container = document.getElementById('chart');
+            container.innerHTML = '';
+
+            svg = d3.select("#chart")
+                .append("svg")
+                .attr("width", width)
+                .attr("height", width)
+                .append("g")
+                .attr("transform", "translate(" + width/2 + "," + width/2 + ")");
+
+            arc = d3.arc()
+                .startAngle(d => d.x0)
+                .endAngle(d => d.x1)
+                .padAngle(0.01)
+                .padRadius(radius / 2)
+                .innerRadius(d => d.y0 * radius / 3)
+                .outerRadius(d => Math.max(d.y0 * radius / 3, d.y1 * radius / 3 - 1));
+
+            root = d3.hierarchy(data)
+                .sum(d => d.type === 'file' ? d.size : 0)
+                .sort((a, b) => b.value - a.value);
+
+            hierarchy = d3.partition().size([2 * Math.PI, 3])(root);
+
+            const colorMap = {};
+            let colorIdx = 0;
+            root.each(d => {
+                if (!colorMap[d.data.name]) colorMap[d.data.name] = getColor(d.data.name, colorIdx++);
+            });
+
+            const path = svg.selectAll("path")
+                .data(hierarchy.descendants().filter(d => d.depth > 0))
+                .join("path")
+                .attr("d", arc)
+                .attr("fill", d => {
+                    let node = d;
+                    while (node.depth > 1 && node.parent) node = node.parent;
+                    return colorMap[node.data.name] || '#888';
+                })
+                .attr("fill-opacity", d => d.depth === 1 ? 1 : 0.7)
+                .attr("stroke", "#1a1a2e")
+                .attr("stroke-width", 1)
+                .style("cursor", "pointer")
+                .on("click", clicked)
+                .on("mouseover", showInfo)
+                .on("mouseout", hideInfo);
+
+            path.append("title").text(d => d.data.name + " - " + formatSize(d.value));
+
+            svg.selectAll("text")
+                .data(hierarchy.descendants().filter(d => d.depth === 1))
+                .join("text")
+                .attr("transform", d => "translate(" + arc.centroid(d) + "), rotate(" + ((d.x0 + d.x1) / 2 * 180 / Math.PI - 90) + ")")
+                .attr("dy", "0.35em")
+                .attr("text-anchor", "middle")
+                .attr("fill", "#000")
+                .attr("font-size", "10px")
+                .text(d => d.data.name.length > 12 ? d.data.name.slice(0,10) + ".." : d.data.name);
+        }
+
+        function clicked(event, p) {
+            if (p.depth === 0) return;
+            zoomStack.push(p);
+            updateBreadcrumb();
+
+            svg.selectAll("path")
+                .transition().duration(500)
+                .attr("fill-opacity", d => isAncestorOrSelf(p, d) ? 1 : 0.2);
+
+            svg.selectAll("text").remove();
+
+            svg.selectAll("text")
+                .data(hierarchy.descendants().filter(d => d.depth === 1 && isAncestorOrSelf(p, d)))
+                .join("text")
+                .attr("transform", d => "translate(" + arc.centroid(d) + "), rotate(" + ((d.x0 + d.x1) / 2 * 180 / Math.PI - 90) + ")")
+                .attr("dy", "0.35em")
+                .attr("text-anchor", "middle")
+                .attr("fill", "#000")
+                .attr("font-size", "10px")
+                .text(d => d.data.name.length > 12 ? d.data.name.slice(0,10) + ".." : d.data.name);
+        }
+
+        function isAncestorOrSelf(p, d) {
+            while (d.depth > 1 && d.parent) d = d.parent;
+            return d === p;
+        }
+
+        function resetView() {
+            zoomStack = [];
+            updateBreadcrumb();
+            svg.selectAll("path")
+                .transition().duration(500)
+                .attr("fill-opacity", d => d.depth === 1 ? 1 : 0.7);
+        }
+
+        function updateBreadcrumb() {
+            const bc = document.getElementById('breadcrumb');
+            let html = '<span class="root" onclick="resetView()">Root</span>';
+            for (let i = 0; i < zoomStack.length; i++) {
+                html += `<span class="sep">/</span><span class="crumb" onclick="navigateTo(${i})">${zoomStack[i].data.name}</span>`;
+            }
+            bc.innerHTML = html;
+        }
+
+        function navigateTo(index) {
+            zoomStack = zoomStack.slice(0, index + 1);
+            updateBreadcrumb();
+            const p = zoomStack[zoomStack.length - 1];
+            svg.selectAll("path")
+                .transition().duration(500)
+                .attr("fill-opacity", d => isAncestorOrSelf(p, d) ? 1 : 0.2);
+        }
+
+        function showInfo(event, p) {
+            window.selectedNode = p;
+            const info = document.getElementById('info');
+            document.getElementById('info-name').textContent = p.data.name;
+            document.getElementById('info-size').textContent = formatSize(p.value);
+            document.getElementById('info-path').textContent = p.data.path || '-';
+            document.getElementById('info-type').textContent = 'Type: ' + (p.data.type === 'dir' ? 'Folder' : 'File') + (p.data.type === 'file' && p.data.extension ? ' (' + p.data.extension + ')' : '');
+            document.getElementById('expand-btn').style.display = p.data.type === 'dir' ? 'block' : 'none';
+            info.style.display = 'block';
+        }
+
+        function hideInfo() { document.getElementById('info').style.display = 'none'; }
+        function closeInfo() { document.getElementById('info').style.display = 'none'; }
+
+        function updateLegend(data) {
+            const legend = document.getElementById('legend-items');
+            const types = getFileTypes(data);
+            let html = '';
+            let idx = 0;
+            const sorted = Object.entries(types).sort((a, b) => b[1] - a[1]).slice(0, 10);
+            for (const [type, count] of sorted) {
+                html += `<div class="entry"><div class="color" style="background:${getColor(type, idx++)}"></div>${type}: ${count}</div>`;
+            }
+            legend.innerHTML = html || '<div style="color:#888">No files</div>';
+        }
+
+        function getFileTypes(node, result) {
+            result = result || {};
+            if (node.type === 'file' && node.extension) result[node.extension] = (result[node.extension] || 0) + 1;
+            if (node.children) node.children.forEach(child => getFileTypes(child, result));
+            return result;
+        }
+
+        document.getElementById('path-input').addEventListener('keypress', e => {
+            if (e.key === 'Enter') startScan();
+        });
+
+        loadDrives();
+    </script>
+</body>
+</html>

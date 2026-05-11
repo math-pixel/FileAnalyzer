@@ -1,0 +1,98 @@
+{
+  "scan_info": {
+    "root": "C:\\Users\\mathc\\Documents\\Programation\\FileAnalyser",
+    "start_time": "2026-05-10T22:01:48.040937",
+    "end_time": "2026-05-10T22:01:48.044472",
+    "duration_seconds": 0.003535,
+    "total_size": 27733,
+    "total_size_formatted": "27.08 KB",
+    "total_files": 6,
+    "total_dirs": 3,
+    "errors_count": 0,
+    "options": {
+      "max_depth": null,
+      "min_size": null,
+      "min_size_formatted": null,
+      "exclude_patterns": [],
+      "system_exclusions_applied": []
+    }
+  },
+  "errors": [],
+  "tree": {
+    "name": "FileAnalyser",
+    "path": "C:\\Users\\mathc\\Documents\\Programation\\FileAnalyser",
+    "type": "dir",
+    "size": 27733,
+    "children": [
+      {
+        "name": "output",
+        "path": "C:\\Users\\mathc\\Documents\\Programation\\FileAnalyser\\output",
+        "type": "dir",
+        "size": 17483,
+        "children": [
+          {
+            "name": "test_scan.html",
+            "path": "C:\\Users\\mathc\\Documents\\Programation\\FileAnalyser\\output\\test_scan.html",
+            "type": "file",
+            "size": 14703,
+            "extension": ".html"
+          },
+          {
+            "name": "test_scan.json",
+            "path": "C:\\Users\\mathc\\Documents\\Programation\\FileAnalyser\\output\\test_scan.json",
+            "type": "file",
+            "size": 2780,
+            "extension": ".json"
+          }
+        ],
+        "file_types": {
+          ".html": 1,
+          ".json": 1
+        }
+      },
+      {
+        "name": "__pycache__",
+        "path": "C:\\Users\\mathc\\Documents\\Programation\\FileAnalyser\\__pycache__",
+        "type": "dir",
+        "size": 14477,
+        "children": [
+          {
+            "name": "utils.cpython-38.pyc",
+            "path": "C:\\Users\\mathc\\Documents\\Programation\\FileAnalyser\\__pycache__\\utils.cpython-38.pyc",
+            "type": "file",
+            "size": 14477,
+            "extension": ".pyc"
+          }
+        ],
+        "file_types": {
+          ".pyc": 1
+        }
+      },
+      {
+        "name": "utils.py",
+        "path": "C:\\Users\\mathc\\Documents\\Programation\\FileAnalyser\\utils.py",
+        "type": "file",
+        "size": 14133,
+        "extension": ".py"
+      },
+      {
+        "name": "scanner.py",
+        "path": "C:\\Users\\mathc\\Documents\\Programation\\FileAnalyser\\scanner.py",
+        "type": "file",
+        "size": 9550,
+        "extension": ".py"
+      },
+      {
+        "name": "README.md",
+        "path": "C:\\Users\\mathc\\Documents\\Programation\\FileAnalyser\\README.md",
+        "type": "file",
+        "size": 4050,
+        "extension": ".md"
+      }
+    ],
+    "file_types": {
+      ".md": 1,
+      ".py": 2
+    }
+  }
+}
