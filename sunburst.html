@@ -24,7 +24,7 @@
         #loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #4fc3f7; font-size: 18px; display: none; }
         #loading .spinner { display: inline-block; animation: spin 1s linear infinite; margin-right: 10px; }
         @keyframes spin { 100% { transform: rotate(360deg); } }
-        #info { position: fixed; top: 80px; left: 20px; background: rgba(0,0,0,0.8); padding: 15px 20px; border-radius: 10px; font-size: 14px; line-height: 1.8; z-index: 100; display: none; max-width: 400px; }
+        #info { position: fixed; background: rgba(0,0,0,0.9); padding: 15px 20px; border-radius: 10px; font-size: 14px; line-height: 1.8; z-index: 1000; display: none; max-width: 350px; border: 1px solid rgba(255,255,255,0.2); box-shadow: 0 4px 20px rgba(0,0,0,0.5); pointer-events: none; }
         #info h2 { font-size: 16px; margin-bottom: 8px; color: #fff; word-break: break-all; }
         #info .size { font-size: 24px; font-weight: bold; color: #ffd700; }
         #info .path { color: #888; font-size: 12px; word-break: break-all; margin-top: 5px; }
@@ -51,7 +51,9 @@
     <div id="app">
         <div id="header">
             <h1>FileAnalyser</h1>
-            <div id="drives"></div>
+            <div id="drives">
+                <button class="drive-btn" onclick="document.getElementById('path-input').value='C:\\';startScan();">C:\</button>
+            </div>
             <input type="text" id="path-input" placeholder="Enter path to scan (e.g. C:\ or /home)">
             <button id="btn-scan" onclick="startScan()">Scan</button>
         </div>
@@ -323,6 +325,14 @@
             document.getElementById('info-path').textContent = p.data.path || '-';
             document.getElementById('info-type').textContent = 'Type: ' + (p.data.type === 'dir' ? 'Folder' : 'File') + (p.data.type === 'file' && p.data.extension ? ' (' + p.data.extension + ')' : '');
             document.getElementById('expand-btn').style.display = p.data.type === 'dir' ? 'block' : 'none';
+
+            let x = event.clientX + 15;
+            let y = event.clientY + 15;
+            const infoRect = info.getBoundingClientRect();
+            if (x + 350 > window.innerWidth) x = event.clientX - 365;
+            if (y + 200 > window.innerHeight) y = event.clientY - 200;
+            info.style.left = x + 'px';
+            info.style.top = y + 'px';
             info.style.display = 'block';
         }
 
