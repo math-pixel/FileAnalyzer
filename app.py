@@ -70,7 +70,6 @@ class FileAnalyserHandler(http.server.SimpleHTTPRequestHandler):
                 return
 
             _reset_cancel()
-
             max_depth = int(depth) if depth and depth.isdigit() else INITIAL_DEPTH
             system_exclusions = [] if no_system == "true" else get_default_exclusions(str(scan_path_obj))
 
@@ -82,11 +81,11 @@ class FileAnalyserHandler(http.server.SimpleHTTPRequestHandler):
             tree = scan_directory_iterative(
                 scan_path_obj,
                 max_depth=max_depth,
+                cancel_check=_is_cancelled,
                 min_size=None,
                 exclude_patterns=system_exclusions if system_exclusions else None,
                 progress_callback=progress_callback,
                 errors=errors,
-                cancel_check=_is_cancelled,
             )
 
             total_size = tree["size"]
@@ -132,7 +131,6 @@ class FileAnalyserHandler(http.server.SimpleHTTPRequestHandler):
                 return
 
             _reset_cancel()
-
             system_exclusions = [] if no_system == "true" else get_default_exclusions(str(scan_path_obj))
 
             errors: List[Dict[str, Any]] = []

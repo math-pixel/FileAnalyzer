@@ -1,323 +1,61 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FileAnalyser</title>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #1a1a2e;
-            color: #eee;
-            overflow: hidden;
-        }
-
-        #app {
-            width: 100vw;
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-        }
-
-        #header {
-            background: rgba(0, 0, 0, 0.5);
-            padding: 15px 20px;
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            z-index: 100;
-        }
-
-        #header h1 {
-            font-size: 18px;
-            color: #fff;
-        }
-
-        #path-input {
-            flex: 1;
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            color: #fff;
-            padding: 8px 12px;
-            border-radius: 5px;
-            font-size: 14px;
-        }
-
-        #path-input:focus {
-            outline: none;
-            border-color: #4fc3f7;
-        }
-
-        #btn-scan {
-            background: #4fc3f7;
-            border: none;
-            padding: 8px 20px;
-            border-radius: 5px;
-            color: #000;
-            font-weight: bold;
-            cursor: pointer;
-        }
-
-        #btn-scan:hover {
-            background: #81d4fa;
-        }
-
-        #btn-scan:disabled {
-            background: #555;
-            cursor: not-allowed;
-        }
-
-        #btn-cancel {
-            background: #ff6b6b;
-            border: none;
-            padding: 8px 20px;
-            border-radius: 5px;
-            color: #fff;
-            font-weight: bold;
-            cursor: pointer;
-        }
-
-        #btn-cancel:hover {
-            background: #e05555;
-        }
-
-        #drives {
-            display: flex;
-            gap: 5px;
-        }
-
-        .drive-btn {
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            color: #fff;
-            padding: 8px 12px;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 12px;
-        }
-
-        .drive-btn:hover {
-            background: rgba(255, 255, 255, 0.2);
-        }
-
-        #status-bar {
-            background: rgba(0, 0, 0, 0.3);
-            padding: 8px 20px;
-            font-size: 12px;
-            color: #aaa;
-            display: flex;
-            justify-content: space-between;
-        }
-
-        #chart-container {
-            flex: 1;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            position: relative;
-        }
-
-        #loading {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            color: #4fc3f7;
-            font-size: 18px;
-            display: none;
-        }
-
-        #loading .spinner {
-            display: inline-block;
-            animation: spin 1s linear infinite;
-            margin-right: 10px;
-        }
-
-        @keyframes spin {
-            100% {
-                transform: rotate(360deg);
-            }
-        }
-
-        #info {
-            position: fixed;
-            background: rgba(0, 0, 0, 0.9);
-            padding: 15px 20px;
-            border-radius: 10px;
-            font-size: 14px;
-            line-height: 1.8;
-            z-index: 1000;
-            display: none;
-            max-width: 350px;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
-            pointer-events: none;
-        }
-
-        #info h2 {
-            font-size: 16px;
-            margin-bottom: 8px;
-            color: #fff;
-            word-break: break-all;
-        }
-
-        #info .size {
-            font-size: 24px;
-            font-weight: bold;
-            color: #ffd700;
-        }
-
-        #info .path {
-            color: #888;
-            font-size: 12px;
-            word-break: break-all;
-            margin-top: 5px;
-        }
-
-        #info .type {
-            color: #4fc3f7;
-        }
-
-        #info .close-btn {
-            position: absolute;
-            top: 10px;
-            right: 15px;
-            background: none;
-            border: none;
-            color: #888;
-            font-size: 20px;
-            cursor: pointer;
-        }
-
-        #info .close-btn:hover {
-            color: #fff;
-        }
-
-        #info .expand-btn {
-            background: #ffd700;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 5px;
-            color: #000;
-            margin-top: 10px;
-            cursor: pointer;
-            font-size: 12px;
-        }
-
-        #info .expand-btn:hover {
-            background: #ffeb3b;
-        }
-
-        #legend {
-            position: fixed;
-            bottom: 20px;
-            left: 20px;
-            background: rgba(0, 0, 0, 0.8);
-            padding: 15px;
-            border-radius: 10px;
-            max-height: 300px;
-            overflow-y: auto;
-            z-index: 100;
-            min-width: 200px;
-        }
-
-        #legend h3 {
-            font-size: 14px;
-            margin-bottom: 10px;
-            color: #fff;
-        }
-
-        #legend .entry {
-            display: flex;
-            align-items: center;
-            margin: 5px 0;
-            font-size: 12px;
-        }
-
-        #legend .color {
-            width: 12px;
-            height: 12px;
-            border-radius: 2px;
-            margin-right: 8px;
-            flex-shrink: 0;
-        }
-
-        #breadcrumb {
-            position: fixed;
-            top: 70px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(0, 0, 0, 0.7);
-            padding: 8px 20px;
-            border-radius: 20px;
-            font-size: 12px;
-            z-index: 100;
-            max-width: 50vw;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-
-        #breadcrumb .sep {
-            color: #555;
-            margin: 0 5px;
-        }
-
-        #breadcrumb .crumb {
-            color: #ffd700;
-            cursor: pointer;
-        }
-
-        #breadcrumb .crumb:hover {
-            text-decoration: underline;
-        }
-
-        #breadcrumb .root {
-            color: #aaa;
-            cursor: pointer;
-        }
-
-        #breadcrumb .root:hover {
-            text-decoration: underline;
-        }
-
-        #progress-bar {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            height: 4px;
-            background: rgba(0, 0, 0, 0.5);
-        }
-
-        #progress-bar .fill {
-            height: 100%;
-            background: #4fc3f7;
-            width: 0%;
-            transition: width 0.3s;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #1a1a2e; color: #eee; overflow: hidden; }
+        #app { width: 100vw; height: 100vh; display: flex; flex-direction: column; }
+        #header { background: rgba(0,0,0,0.5); padding: 15px 20px; display: flex; align-items: center; gap: 15px; z-index: 100; }
+        #header h1 { font-size: 18px; color: #fff; }
+        #path-input { flex: 1; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; padding: 8px 12px; border-radius: 5px; font-size: 14px; }
+        #path-input:focus { outline: none; border-color: #4fc3f7; }
+        #btn-scan { background: #4fc3f7; border: none; padding: 8px 20px; border-radius: 5px; color: #000; font-weight: bold; cursor: pointer; }
+        #btn-scan:hover { background: #81d4fa; }
+        #btn-scan:disabled { background: #555; cursor: not-allowed; }
+        #drives { display: flex; gap: 5px; }
+        .drive-btn { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; padding: 8px 12px; border-radius: 5px; cursor: pointer; font-size: 12px; }
+        .drive-btn:hover { background: rgba(255,255,255,0.2); }
+        #status-bar { background: rgba(0,0,0,0.3); padding: 8px 20px; font-size: 12px; color: #aaa; display: flex; justify-content: space-between; }
+        #chart-container { flex: 1; display: flex; align-items: center; justify-content: center; position: relative; }
+        #loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #4fc3f7; font-size: 18px; display: none; }
+        #loading .spinner { display: inline-block; animation: spin 1s linear infinite; margin-right: 10px; }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+        #info { position: fixed; background: rgba(0,0,0,0.9); padding: 15px 20px; border-radius: 10px; font-size: 14px; line-height: 1.8; z-index: 1000; display: none; max-width: 350px; border: 1px solid rgba(255,255,255,0.2); box-shadow: 0 4px 20px rgba(0,0,0,0.5); pointer-events: none; }
+        #info h2 { font-size: 16px; margin-bottom: 8px; color: #fff; word-break: break-all; }
+        #info .size { font-size: 24px; font-weight: bold; color: #ffd700; }
+        #info .path { color: #888; font-size: 12px; word-break: break-all; margin-top: 5px; }
+        #info .type { color: #4fc3f7; }
+        #info .close-btn { position: absolute; top: 10px; right: 15px; background: none; border: none; color: #888; font-size: 20px; cursor: pointer; }
+        #info .close-btn:hover { color: #fff; }
+        #info .expand-btn { background: #ffd700; border: none; padding: 8px 16px; border-radius: 5px; color: #000; margin-top: 10px; cursor: pointer; font-size: 12px; }
+        #info .expand-btn:hover { background: #ffeb3b; }
+        #legend { position: fixed; bottom: 20px; left: 20px; background: rgba(0,0,0,0.8); padding: 15px; border-radius: 10px; max-height: 300px; overflow-y: auto; z-index: 100; min-width: 200px; }
+        #legend h3 { font-size: 14px; margin-bottom: 10px; color: #fff; }
+        #legend .entry { display: flex; align-items: center; margin: 5px 0; font-size: 12px; }
+        #legend .color { width: 12px; height: 12px; border-radius: 2px; margin-right: 8px; flex-shrink: 0; }
+        #breadcrumb { position: fixed; top: 70px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.7); padding: 8px 20px; border-radius: 20px; font-size: 12px; z-index: 100; max-width: 50vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        #breadcrumb .sep { color: #555; margin: 0 5px; }
+        #breadcrumb .crumb { color: #ffd700; cursor: pointer; }
+        #breadcrumb .crumb:hover { text-decoration: underline; }
+        #breadcrumb .root { color: #aaa; cursor: pointer; }
+        #breadcrumb .root:hover { text-decoration: underline; }
+        #progress-bar { position: fixed; bottom: 0; left: 0; right: 0; height: 4px; background: rgba(0,0,0,0.5); }
+        #progress-bar .fill { height: 100%; background: #4fc3f7; width: 0%; transition: width 0.3s; }
     </style>
 </head>
-
 <body>
     <div id="app">
         <div id="header">
             <h1>FileAnalyser</h1>
             <div id="drives">
-                <button class="drive-btn"
-                    onclick="document.getElementById('path-input').value='C:\\';startScan();">C:\</button>
+                <button class="drive-btn" onclick="document.getElementById('path-input').value='C:\\';startScan();">C:\</button>
             </div>
             <input type="text" id="path-input" placeholder="Enter path to scan (e.g. C:\ or /home)">
             <button id="btn-scan" onclick="startScan()">Scan</button>
-            <button id="btn-cancel" onclick="cancelScan()" style="display:none">Cancel</button>
         </div>
         <div id="status-bar">
             <span id="status-text">Ready</span>
@@ -339,9 +77,7 @@
             <h3>File Types</h3>
             <div id="legend-items"></div>
         </div>
-        <div id="progress-bar">
-            <div class="fill" id="progress-fill"></div>
-        </div>
+        <div id="progress-bar"><div class="fill" id="progress-fill"></div></div>
     </div>
 
     <script>
@@ -365,7 +101,7 @@
         }
 
         function getColor(name, index) {
-            const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#ffeaa7', '#dfe6e9', '#fd79a8', '#a29bfe', '#6c5ce7', '#00b894', '#e17055', '#74b9ff', '#a3e635', '#f97316', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16', '#14b8a6', '#f43f5e'];
+            const colors = ['#ff6b6b','#4ecdc4','#45b7d1','#96ceb4','#ffeaa7','#dfe6e9','#fd79a8','#a29bfe','#6c5ce7','#00b894','#e17055','#74b9ff','#a3e635','#f97316','#8b5cf6','#06b6d4','#ec4899','#84cc16','#14b8a6','#f43f5e'];
             return colors[index % colors.length];
         }
 
@@ -388,32 +124,17 @@
             } catch (e) { console.error(e); }
         }
 
-        function cancelScan() {
-            if (abortController) {
-                abortController.abort();
-                abortController = null;
-            }
-            fetch('/api/cancel_scan');
-            document.getElementById('btn-cancel').style.display = 'none';
-            document.getElementById('status-text').textContent = 'Scan cancelled';
-        }
-
         async function startScan() {
             const path = document.getElementById('path-input').value.trim();
             if (!path) return;
 
-            abortController = new AbortController();
-
             document.getElementById('loading').style.display = 'block';
             document.getElementById('btn-scan').disabled = true;
-            document.getElementById('btn-cancel').style.display = 'inline-block';
             document.getElementById('status-text').textContent = 'Scanning...';
             zoomStack = [];
 
             try {
-                const resp = await fetch(`/api/scan?path=${encodeURIComponent(path)}&depth=${initialDepth}`, {
-                    signal: abortController.signal
-                });
+                const resp = await fetch(`/api/scan?path=${encodeURIComponent(path)}&depth=${initialDepth}`);
                 const data = await resp.json();
 
                 if (data.error) { alert(data.error); return; }
@@ -427,16 +148,10 @@
                 document.getElementById('status-stats').textContent =
                     `${formatSize(data.scan_info.total_size)} | ${data.scan_info.total_files} files | ${data.scan_info.total_dirs} dirs`;
             } catch (e) {
-                if (e.name === 'AbortError') {
-                    document.getElementById('status-text').textContent = 'Scan cancelled';
-                } else {
-                    alert('Error: ' + e.message);
-                }
+                alert('Error: ' + e.message);
             } finally {
                 document.getElementById('loading').style.display = 'none';
                 document.getElementById('btn-scan').disabled = false;
-                document.getElementById('btn-cancel').style.display = 'none';
-                abortController = null;
             }
         }
 
@@ -455,7 +170,7 @@
                 .attr("text-anchor", "middle")
                 .attr("fill", "#000")
                 .attr("font-size", "10px")
-                .text(d => d.data.name.length > 12 ? d.data.name.slice(0, 10) + ".." : d.data.name);
+                .text(d => d.data.name.length > 12 ? d.data.name.slice(0,10) + ".." : d.data.name);
         }
 
         async function autoScanAndZoom(nodePath) {
@@ -507,7 +222,7 @@
                 .attr("width", width)
                 .attr("height", width)
                 .append("g")
-                .attr("transform", "translate(" + width / 2 + "," + width / 2 + ")");
+                .attr("transform", "translate(" + width/2 + "," + width/2 + ")");
 
             arc = d3.arc()
                 .startAngle(d => d.x0)
@@ -529,7 +244,7 @@
                 if (!colorMap[d.data.name]) {
                     if (d.data.name === "Espace libre" || d.data.name === "Free Space") {
                         colorMap[d.data.name] = "#10b981"; // Vibrant Emerald green
-                    } else if (d.data.name === "system" || d.data.name === "Other used space") {
+                    } else if (d.data.name === "Autre espace utilisé" || d.data.name === "Other used space") {
                         colorMap[d.data.name] = "#64748b"; // Slate gray
                     } else {
                         colorMap[d.data.name] = getColor(d.data.name, colorIdx++);
@@ -564,7 +279,7 @@
                 .attr("text-anchor", "middle")
                 .attr("fill", "#000")
                 .attr("font-size", "10px")
-                .text(d => d.data.name.length > 12 ? d.data.name.slice(0, 10) + ".." : d.data.name);
+                .text(d => d.data.name.length > 12 ? d.data.name.slice(0,10) + ".." : d.data.name);
         }
 
         function clicked(event, p) {
@@ -591,7 +306,7 @@
             svg.selectAll("path")
                 .transition().duration(500)
                 .attr("fill-opacity", d => d.depth === 1 ? 1 : 0.7);
-
+            
             svg.selectAll("text").remove();
             svg.selectAll("text")
                 .data(hierarchy.descendants().filter(d => d.depth === 1))
@@ -601,7 +316,7 @@
                 .attr("text-anchor", "middle")
                 .attr("fill", "#000")
                 .attr("font-size", "10px")
-                .text(d => d.data.name.length > 12 ? d.data.name.slice(0, 10) + ".." : d.data.name);
+                .text(d => d.data.name.length > 12 ? d.data.name.slice(0,10) + ".." : d.data.name);
         }
 
         function updateBreadcrumb() {
@@ -629,7 +344,7 @@
             let typeStr = 'File';
             if (p.data.type === 'dir') typeStr = 'Folder';
             else if (p.data.type === 'free_space') typeStr = 'Espace libre';
-            else if (p.data.type === 'other_space') typeStr = 'system';
+            else if (p.data.type === 'other_space') typeStr = 'Autre espace utilisé';
             document.getElementById('info-type').textContent = 'Type: ' + typeStr + (p.data.type === 'file' && p.data.extension ? ' (' + p.data.extension + ')' : '');
 
             let x = event.clientX + 15;
@@ -671,5 +386,4 @@
         loadDrives();
     </script>
 </body>
-
 </html>

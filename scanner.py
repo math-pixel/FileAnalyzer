@@ -114,10 +114,7 @@ def scan_directory_iterative(
                 continue
 
             try:
-                if entry.is_symlink():
-                    continue
-
-                if _is_junction(entry_str):
+                if entry.is_symlink() or _is_junction(entry_str):
                     continue
 
                 if entry.is_dir():

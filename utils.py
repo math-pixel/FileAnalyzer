@@ -45,8 +45,8 @@ def inject_disk_usage(tree: Dict, path: Path) -> Dict:
         # Add Other Used Space node
         if other_used > 0:
             other_node = {
-                "name": "system",
-                "path": os.path.join(str(path), "system"),
+                "name": "Autre espace utilisé",
+                "path": os.path.join(str(path), "Autre espace utilisé"),
                 "type": "other_space",
                 "size": other_used,
                 "children": [],
@@ -191,7 +191,7 @@ def save_html(html_path: str, json_path: str, tree: Dict) -> None:
                 if (!colorMap[d.data.name]) {
                     if (d.data.name === "Espace libre" || d.data.name === "Free Space") {
                         colorMap[d.data.name] = "#10b981"; // Vibrant Emerald green
-                    } else if (d.data.name === "system" || d.data.name === "Other used space") {
+                    } else if (d.data.name === "Autre espace utilisé" || d.data.name === "Other used space") {
                         colorMap[d.data.name] = "#64748b"; // Slate gray
                     } else {
                         colorMap[d.data.name] = getColor(d.data.name, colorIdx++);
@@ -298,7 +298,7 @@ def save_html(html_path: str, json_path: str, tree: Dict) -> None:
             let typeStr = 'File';
             if (p.data.type === 'dir') typeStr = 'Folder';
             else if (p.data.type === 'free_space') typeStr = 'Espace libre';
-            else if (p.data.type === 'other_space') typeStr = 'system';
+            else if (p.data.type === 'other_space') typeStr = 'Autre espace utilisé';
             document.getElementById('info-type').textContent = 'Type: ' + typeStr + (p.data.type === 'file' && p.data.extension ? ' (' + p.data.extension + ')' : '');
             info.style.display = 'block';
         }
