@@ -349,7 +349,6 @@
         let currentTree = null;
         let initialDepth = 5;
         let zoomStack = [];
-        let expandedNodes = new Set();
         let abortController = null;
 
         let svg, arc, root, hierarchy;
@@ -410,7 +409,6 @@
             document.getElementById('btn-cancel').style.display = 'inline-block';
             document.getElementById('status-text').textContent = 'Scanning...';
             zoomStack = [];
-            expandedNodes = new Set();
 
             try {
                 const resp = await fetch(`/api/scan?path=${encodeURIComponent(path)}&depth=${initialDepth}`, {
@@ -442,17 +440,6 @@
             }
         }
 
-        function findNodeByPath(node, path) {
-            if (node.data.path === path) return node;
-            if (node.children) {
-                for (const child of node.children) {
-                    const found = findNodeByPath(child, path);
-                    if (found) return found;
-                }
-            }
-            return null;
-        }
-
         function applyZoom(p) {
             svg.selectAll("path")
                 .transition().duration(500)
@@ -479,7 +466,6 @@
             document.getElementById('btn-cancel').style.display = 'inline-block';
             document.getElementById('status-text').textContent = 'Scanning...';
             zoomStack = [];
-            expandedNodes = new Set();
 
             try {
                 const resp = await fetch(`/api/scan_dir?path=${encodeURIComponent(nodePath)}`, {
@@ -510,21 +496,6 @@
                 document.getElementById('btn-cancel').style.display = 'none';
                 abortController = null;
             }
-        }
-
-        function replaceNode(tree, nodePath, newData) {
-            if (tree.path === nodePath) {
-                tree.children = newData.children;
-                tree.size = newData.size;
-                tree.file_types = newData.file_types;
-                return true;
-            }
-            if (tree.children) {
-                for (const child of tree.children) {
-                    if (replaceNode(child, nodePath, newData)) return true;
-                }
-            }
-            return false;
         }
 
         function renderSunburst(data) {
