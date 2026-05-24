@@ -150,7 +150,22 @@ class FileAnalyserHandler(http.server.SimpleHTTPRequestHandler):
                 cancel_check=_is_cancelled,
             )
 
-            self.send_json({"tree": tree, "errors": errors})
+            total_size = tree["size"]
+            total_files, total_dirs = count_items(tree)
+
+            self.send_json({
+                "tree": tree,
+                "errors": errors,
+                "scan_info": {
+                    "root": str(scan_path_obj),
+                    "max_depth": 5,
+                    "total_size": total_size,
+                    "total_size_formatted": format_size(total_size),
+                    "total_files": total_files,
+                    "total_dirs": total_dirs,
+                    "errors_count": len(errors),
+                },
+            })
             return
 
         if path == "/api/cancel_scan":

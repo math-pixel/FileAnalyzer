@@ -472,13 +472,14 @@
         }
 
         async function autoScanAndZoom(nodePath) {
-            if (!currentPath) return;
-
             abortController = new AbortController();
 
+            document.getElementById('path-input').value = nodePath;
             document.getElementById('loading').style.display = 'block';
             document.getElementById('btn-cancel').style.display = 'inline-block';
-            document.getElementById('status-text').textContent = 'Scanning directory...';
+            document.getElementById('status-text').textContent = 'Scanning...';
+            zoomStack = [];
+            expandedNodes = new Set();
 
             try {
                 const resp = await fetch(`/api/scan_dir?path=${encodeURIComponent(nodePath)}`, {
@@ -488,22 +489,16 @@
 
                 if (data.error) { alert(data.error); return; }
 
-                expandedNodes.add(nodePath);
-
-                replaceNode(currentTree, nodePath, data.tree);
+                currentPath = nodePath;
+                currentTree = data.tree;
                 renderSunburst(currentTree);
-
-                const newP = findNodeByPath(root, nodePath);
-                if (newP) {
-                    zoomStack.push(newP);
-                    applyZoom(newP);
-                } else {
-                    resetView();
-                }
-
                 updateBreadcrumb();
                 updateLegend(currentTree);
                 document.getElementById('status-text').textContent = 'Scan complete';
+                if (data.scan_info) {
+                    document.getElementById('status-stats').textContent =
+                        `${formatSize(data.scan_info.total_size)} | ${data.scan_info.total_files} files | ${data.scan_info.total_dirs} dirs`;
+                }
             } catch (e) {
                 if (e.name === 'AbortError') {
                     document.getElementById('status-text').textContent = 'Scan cancelled';
