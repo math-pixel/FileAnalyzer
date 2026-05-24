@@ -2,7 +2,7 @@ import os
 import argparse
 from pathlib import Path
 from datetime import datetime
-from typing import Optional, List, Dict, Tuple, Any, Union
+from typing import Optional, List, Dict, Tuple, Any, Union, Callable
 
 from utils import (
     format_size,
@@ -27,6 +27,19 @@ def get_default_exclusions(path: str) -> List[str]:
     return []
 
 
+def _is_junction(path: str) -> bool:
+    """Detect NTFS junction points on Windows (not caught by os.path.islink)."""
+    if os.name != 'nt':
+        return False
+    try:
+        import ctypes
+        FILE_ATTRIBUTE_REPARSE_POINT = 0x0400
+        attrs = ctypes.windll.kernel32.GetFileAttributesW(path)
+        return attrs != -1 and bool(attrs & FILE_ATTRIBUTE_REPARSE_POINT)
+    except Exception:
+        return False
+
+
 def scan_directory_iterative(
     root_path: Path,
     max_depth: Optional[int] = None,
@@ -34,6 +47,7 @@ def scan_directory_iterative(
     exclude_patterns: Optional[List[str]] = None,
     progress_callback=None,
     errors: Optional[List[Dict[str, Any]]] = None,
+    cancel_check: Optional[Callable[[], bool]] = None,
 ) -> Dict[str, Any]:
     """Iterative scan using explicit stack to avoid recursion limit."""
     if errors is None:
@@ -59,6 +73,9 @@ def scan_directory_iterative(
     children_map[root_key] = []
 
     while stack:
+        if cancel_check and cancel_check():
+            break
+
         current_path, depth, parent_key = stack.pop()
         current_key = str(current_path)
 
@@ -92,11 +109,15 @@ def scan_directory_iterative(
         file_types: Dict[str, int] = {}
 
         for entry in entries:
-            if exclude_patterns and any(p in str(entry) for p in exclude_patterns):
+            entry_str = str(entry)
+            if exclude_patterns and any(p in entry_str.replace('\\', '/') for p in exclude_patterns):
                 continue
 
             try:
                 if entry.is_symlink():
+                    continue
+
+                if _is_junction(entry_str):
                     continue
 
                 if entry.is_dir():

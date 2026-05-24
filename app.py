@@ -3,6 +3,7 @@ import socketserver
 import json
 import argparse
 import os
+import threading
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, List, Dict, Any
@@ -13,6 +14,20 @@ from utils import format_size
 
 PORT = 8000
 INITIAL_DEPTH = 5
+
+_cancel_event = threading.Event()
+_cancel_lock = threading.Lock()
+
+def _reset_cancel():
+    with _cancel_lock:
+        _cancel_event.clear()
+
+def _request_cancel():
+    with _cancel_lock:
+        _cancel_event.set()
+
+def _is_cancelled():
+    return _cancel_event.is_set()
 
 
 class FileAnalyserHandler(http.server.SimpleHTTPRequestHandler):
@@ -54,6 +69,8 @@ class FileAnalyserHandler(http.server.SimpleHTTPRequestHandler):
                 self.send_json({"error": f"Path does not exist: {scan_path}"}, 400)
                 return
 
+            _reset_cancel()
+
             max_depth = int(depth) if depth and depth.isdigit() else INITIAL_DEPTH
             system_exclusions = [] if no_system == "true" else get_default_exclusions(str(scan_path_obj))
 
@@ -69,6 +86,7 @@ class FileAnalyserHandler(http.server.SimpleHTTPRequestHandler):
                 exclude_patterns=system_exclusions if system_exclusions else None,
                 progress_callback=progress_callback,
                 errors=errors,
+                cancel_check=_is_cancelled,
             )
 
             total_size = tree["size"]
@@ -113,6 +131,8 @@ class FileAnalyserHandler(http.server.SimpleHTTPRequestHandler):
                 self.send_json({"error": "Path is not a directory"}, 400)
                 return
 
+            _reset_cancel()
+
             system_exclusions = [] if no_system == "true" else get_default_exclusions(str(scan_path_obj))
 
             errors: List[Dict[str, Any]] = []
@@ -122,14 +142,20 @@ class FileAnalyserHandler(http.server.SimpleHTTPRequestHandler):
 
             tree = scan_directory_iterative(
                 scan_path_obj,
-                max_depth=None,
+                max_depth=5,
                 min_size=None,
                 exclude_patterns=system_exclusions if system_exclusions else None,
                 progress_callback=progress_callback,
                 errors=errors,
+                cancel_check=_is_cancelled,
             )
 
             self.send_json({"tree": tree, "errors": errors})
+            return
+
+        if path == "/api/cancel_scan":
+            _request_cancel()
+            self.send_json({"status": "cancelled"})
             return
 
         if path.startswith("/api/drives"):
@@ -161,7 +187,7 @@ def main():
     )
     args = parser.parse_args()
 
-    with socketserver.TCPServer((args.bind, args.port), FileAnalyserHandler) as httpd:
+    with socketserver.ThreadingTCPServer((args.bind, args.port), FileAnalyserHandler) as httpd:
         print(f"FileAnalyser running at http://{args.bind}:{args.port}")
         print(f"Open http://{args.bind}:{args.port}/sunburst.html in your browser")
         print("Press Ctrl+C to stop")
