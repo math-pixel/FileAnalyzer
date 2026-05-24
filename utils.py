@@ -17,6 +17,48 @@ def format_size(bytes_size: Optional[int]) -> str:
     return f"{size:.2f} {units[unit_idx]}"
 
 
+def inject_disk_usage(tree: Dict, path: Path) -> Dict:
+    try:
+        import shutil
+        import os
+        usage = shutil.disk_usage(str(path))
+        free_space = usage.free
+        total_space = usage.total
+        
+        # Calculate current scanned size
+        scanned_size = tree.get("size", 0)
+        other_used = total_space - free_space - scanned_size
+        if other_used < 0:
+            other_used = 0
+            
+        # Add Free Space node
+        free_node = {
+            "name": "Espace libre",
+            "path": os.path.join(str(path), "Espace libre"),
+            "type": "free_space",
+            "size": free_space,
+            "children": [],
+            "file_types": {}
+        }
+        tree.setdefault("children", []).append(free_node)
+        
+        # Add Other Used Space node
+        if other_used > 0:
+            other_node = {
+                "name": "Autre espace utilisé",
+                "path": os.path.join(str(path), "Autre espace utilisé"),
+                "type": "other_space",
+                "size": other_used,
+                "children": [],
+                "file_types": {}
+            }
+            tree.setdefault("children", []).append(other_node)
+            
+    except Exception:
+        pass
+    return tree
+
+
 def build_tree(root_path: str, data: Dict) -> Dict:
     return data
 
@@ -136,7 +178,7 @@ def save_html(html_path: str, json_path: str, tree: Dict) -> None:
                 .outerRadius(d => Math.max(d.y0 * radius / 3, d.y1 * radius / 3 - 1));
 
             root = d3.hierarchy(data)
-                .sum(d => d.type === 'file' ? d.size : 0)
+                .sum(d => (d.type === 'file' || d.type === 'free_space' || d.type === 'other_space') ? d.size : 0)
                 .sort((a, b) => b.value - a.value);
 
             hierarchy = d3.partition()
@@ -147,7 +189,13 @@ def save_html(html_path: str, json_path: str, tree: Dict) -> None:
             let colorIdx = 0;
             root.each(d => {
                 if (!colorMap[d.data.name]) {
-                    colorMap[d.data.name] = getColor(d.data.name, colorIdx++);
+                    if (d.data.name === "Espace libre" || d.data.name === "Free Space") {
+                        colorMap[d.data.name] = "#10b981"; // Vibrant Emerald green
+                    } else if (d.data.name === "Autre espace utilisé" || d.data.name === "Other used space") {
+                        colorMap[d.data.name] = "#64748b"; // Slate gray
+                    } else {
+                        colorMap[d.data.name] = getColor(d.data.name, colorIdx++);
+                    }
                 }
             });
 
@@ -173,7 +221,7 @@ def save_html(html_path: str, json_path: str, tree: Dict) -> None:
 
             if (showLabels) {
                 svg.selectAll("text")
-                    .data(hierarchy.descents().filter(d => d.depth === 1))
+                    .data(hierarchy.descendants().filter(d => d.depth === 1))
                     .join("text")
                     .attr("transform", d => "translate(" + arc.centroid(d) + "), rotate(" + ((d.x0 + d.x1) / 2 * 180 / Math.PI - 90) + ")")
                     .attr("dy", "0.35em")
@@ -198,7 +246,7 @@ def save_html(html_path: str, json_path: str, tree: Dict) -> None:
 
             if (showLabels) {
                 svg.selectAll("text")
-                    .data(hierarchy.descents().filter(d => d.depth === 1 && isAncestorOrSelf(p, d)))
+                    .data(hierarchy.descendants().filter(d => d.depth === 1 && isAncestorOrSelf(p, d)))
                     .join("text")
                     .attr("transform", d => "translate(" + arc.centroid(d) + "), rotate(" + ((d.x0 + d.x1) / 2 * 180 / Math.PI - 90) + ")")
                     .attr("dy", "0.35em")
@@ -247,7 +295,11 @@ def save_html(html_path: str, json_path: str, tree: Dict) -> None:
             document.getElementById('info-name').textContent = p.data.name;
             document.getElementById('info-size').textContent = formatSize(p.value);
             document.getElementById('info-path').textContent = p.data.path || '-';
-            document.getElementById('info-type').textContent = 'Type: ' + (p.data.type === 'dir' ? 'Folder' : 'File') + (p.data.type === 'file' && p.data.extension ? ' (' + p.data.extension + ')' : '');
+            let typeStr = 'File';
+            if (p.data.type === 'dir') typeStr = 'Folder';
+            else if (p.data.type === 'free_space') typeStr = 'Espace libre';
+            else if (p.data.type === 'other_space') typeStr = 'Autre espace utilisé';
+            document.getElementById('info-type').textContent = 'Type: ' + typeStr + (p.data.type === 'file' && p.data.extension ? ' (' + p.data.extension + ')' : '');
             info.style.display = 'block';
         }
 

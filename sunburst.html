@@ -72,7 +72,6 @@
             <div class="size" id="info-size">-</div>
             <div class="type" id="info-type">-</div>
             <div class="path" id="info-path">-</div>
-            <button class="expand-btn" id="expand-btn" onclick="expandNode()">Scan this folder</button>
         </div>
         <div id="legend">
             <h3>File Types</h3>
@@ -157,16 +156,39 @@
             }
         }
 
-        async function expandNode() {
+        function findNodeByPath(node, path) {
+            if (node.data.path === path) return node;
+            if (node.children) {
+                for (const child of node.children) {
+                    const found = findNodeByPath(child, path);
+                    if (found) return found;
+                }
+            }
+            return null;
+        }
+
+        function applyZoom(p) {
+            svg.selectAll("path")
+                .transition().duration(500)
+                .attr("fill-opacity", d => isAncestorOrSelf(p, d) ? 1 : 0.2);
+
+            svg.selectAll("text").remove();
+
+            svg.selectAll("text")
+                .data(hierarchy.descendants().filter(d => d.depth === 1 && isAncestorOrSelf(p, d)))
+                .join("text")
+                .attr("transform", d => "translate(" + arc.centroid(d) + "), rotate(" + ((d.x0 + d.x1) / 2 * 180 / Math.PI - 90) + ")")
+                .attr("dy", "0.35em")
+                .attr("text-anchor", "middle")
+                .attr("fill", "#000")
+                .attr("font-size", "10px")
+                .text(d => d.data.name.length > 12 ? d.data.name.slice(0,10) + ".." : d.data.name);
+        }
+
+        async function autoScanAndZoom(nodePath) {
             if (!currentPath) return;
-            const node = window.selectedNode;
-            if (!node || node.data.type !== 'dir') return;
-
-            const nodePath = node.data.path;
-            const nodeKey = nodePath;
-
             document.getElementById('loading').style.display = 'block';
-            document.getElementById('status-text').textContent = `Scanning ${node.data.name}...`;
+            document.getElementById('status-text').textContent = 'Scanning directory...';
 
             try {
                 const resp = await fetch(`/api/scan_dir?path=${encodeURIComponent(nodePath)}`);
@@ -174,10 +196,20 @@
 
                 if (data.error) { alert(data.error); return; }
 
-                expandedNodes.add(nodeKey);
+                expandedNodes.add(nodePath);
 
-                replaceNode(currentTree, nodeKey, data.tree);
+                replaceNode(currentTree, nodePath, data.tree);
                 renderSunburst(currentTree);
+                
+                // Find the new D3 node corresponding to the newly scanned folder
+                const newP = findNodeByPath(root, nodePath);
+                if (newP) {
+                    zoomStack.push(newP);
+                    applyZoom(newP);
+                } else {
+                    resetView();
+                }
+
                 updateBreadcrumb();
                 updateLegend(currentTree);
                 document.getElementById('status-text').textContent = 'Scan complete';
@@ -223,7 +255,7 @@
                 .outerRadius(d => Math.max(d.y0 * radius / 3, d.y1 * radius / 3 - 1));
 
             root = d3.hierarchy(data)
-                .sum(d => d.type === 'file' ? d.size : 0)
+                .sum(d => (d.type === 'file' || d.type === 'free_space' || d.type === 'other_space') ? d.size : 0)
                 .sort((a, b) => b.value - a.value);
 
             hierarchy = d3.partition().size([2 * Math.PI, 3])(root);
@@ -231,7 +263,15 @@
             const colorMap = {};
             let colorIdx = 0;
             root.each(d => {
-                if (!colorMap[d.data.name]) colorMap[d.data.name] = getColor(d.data.name, colorIdx++);
+                if (!colorMap[d.data.name]) {
+                    if (d.data.name === "Espace libre" || d.data.name === "Free Space") {
+                        colorMap[d.data.name] = "#10b981"; // Vibrant Emerald green
+                    } else if (d.data.name === "Autre espace utilisé" || d.data.name === "Other used space") {
+                        colorMap[d.data.name] = "#64748b"; // Slate gray
+                    } else {
+                        colorMap[d.data.name] = getColor(d.data.name, colorIdx++);
+                    }
+                }
             });
 
             const path = svg.selectAll("path")
@@ -266,24 +306,15 @@
 
         function clicked(event, p) {
             if (p.depth === 0) return;
+            
+            if (p.data.type === 'dir' && !expandedNodes.has(p.data.path)) {
+                autoScanAndZoom(p.data.path);
+                return;
+            }
+
             zoomStack.push(p);
             updateBreadcrumb();
-
-            svg.selectAll("path")
-                .transition().duration(500)
-                .attr("fill-opacity", d => isAncestorOrSelf(p, d) ? 1 : 0.2);
-
-            svg.selectAll("text").remove();
-
-            svg.selectAll("text")
-                .data(hierarchy.descendants().filter(d => d.depth === 1 && isAncestorOrSelf(p, d)))
-                .join("text")
-                .attr("transform", d => "translate(" + arc.centroid(d) + "), rotate(" + ((d.x0 + d.x1) / 2 * 180 / Math.PI - 90) + ")")
-                .attr("dy", "0.35em")
-                .attr("text-anchor", "middle")
-                .attr("fill", "#000")
-                .attr("font-size", "10px")
-                .text(d => d.data.name.length > 12 ? d.data.name.slice(0,10) + ".." : d.data.name);
+            applyZoom(p);
         }
 
         function isAncestorOrSelf(p, d) {
@@ -297,6 +328,17 @@
             svg.selectAll("path")
                 .transition().duration(500)
                 .attr("fill-opacity", d => d.depth === 1 ? 1 : 0.7);
+            
+            svg.selectAll("text").remove();
+            svg.selectAll("text")
+                .data(hierarchy.descendants().filter(d => d.depth === 1))
+                .join("text")
+                .attr("transform", d => "translate(" + arc.centroid(d) + "), rotate(" + ((d.x0 + d.x1) / 2 * 180 / Math.PI - 90) + ")")
+                .attr("dy", "0.35em")
+                .attr("text-anchor", "middle")
+                .attr("fill", "#000")
+                .attr("font-size", "10px")
+                .text(d => d.data.name.length > 12 ? d.data.name.slice(0,10) + ".." : d.data.name);
         }
 
         function updateBreadcrumb() {
@@ -312,9 +354,7 @@
             zoomStack = zoomStack.slice(0, index + 1);
             updateBreadcrumb();
             const p = zoomStack[zoomStack.length - 1];
-            svg.selectAll("path")
-                .transition().duration(500)
-                .attr("fill-opacity", d => isAncestorOrSelf(p, d) ? 1 : 0.2);
+            applyZoom(p);
         }
 
         function showInfo(event, p) {
@@ -323,8 +363,11 @@
             document.getElementById('info-name').textContent = p.data.name;
             document.getElementById('info-size').textContent = formatSize(p.value);
             document.getElementById('info-path').textContent = p.data.path || '-';
-            document.getElementById('info-type').textContent = 'Type: ' + (p.data.type === 'dir' ? 'Folder' : 'File') + (p.data.type === 'file' && p.data.extension ? ' (' + p.data.extension + ')' : '');
-            document.getElementById('expand-btn').style.display = p.data.type === 'dir' ? 'block' : 'none';
+            let typeStr = 'File';
+            if (p.data.type === 'dir') typeStr = 'Folder';
+            else if (p.data.type === 'free_space') typeStr = 'Espace libre';
+            else if (p.data.type === 'other_space') typeStr = 'Autre espace utilisé';
+            document.getElementById('info-type').textContent = 'Type: ' + typeStr + (p.data.type === 'file' && p.data.extension ? ' (' + p.data.extension + ')' : '');
 
             let x = event.clientX + 15;
             let y = event.clientY + 15;

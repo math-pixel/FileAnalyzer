@@ -74,6 +74,9 @@ class FileAnalyserHandler(http.server.SimpleHTTPRequestHandler):
             total_size = tree["size"]
             total_files, total_dirs = count_items(tree)
 
+            from utils import inject_disk_usage
+            tree = inject_disk_usage(tree, scan_path_obj)
+
             result = {
                 "scan_info": {
                     "root": str(scan_path_obj),

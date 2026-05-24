@@ -225,6 +225,9 @@ def main():
     total_size = tree["size"]
     total_files_found, total_dirs_found = count_items(tree)
 
+    from utils import inject_disk_usage
+    tree = inject_disk_usage(tree, root_path)
+
     scan_info = {
         "root": str(root_path),
         "start_time": start_time.isoformat(),
