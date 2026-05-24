@@ -56,6 +56,7 @@
             </div>
             <input type="text" id="path-input" placeholder="Enter path to scan (e.g. C:\ or /home)">
             <button id="btn-scan" onclick="startScan()">Scan</button>
+<button id="btn-cancel" onclick="cancelScan()" style="display:none;background:#ef4444;border:none;padding:8px 20px;border-radius:5px;color:#fff;font-weight:bold;cursor:pointer;">Cancel</button>
         </div>
         <div id="status-bar">
             <span id="status-text">Ready</span>
@@ -128,13 +129,19 @@
             const path = document.getElementById('path-input').value.trim();
             if (!path) return;
 
+            if (abortController) abortController.abort();
+            abortController = new AbortController();
+
             document.getElementById('loading').style.display = 'block';
             document.getElementById('btn-scan').disabled = true;
+            document.getElementById('btn-cancel').style.display = 'inline-block';
             document.getElementById('status-text').textContent = 'Scanning...';
             zoomStack = [];
 
             try {
-                const resp = await fetch(`/api/scan?path=${encodeURIComponent(path)}&depth=${initialDepth}`);
+                const resp = await fetch(`/api/scan?path=${encodeURIComponent(path)}&depth=${initialDepth}`, {
+                    signal: abortController.signal
+                });
                 const data = await resp.json();
 
                 if (data.error) { alert(data.error); return; }
@@ -148,10 +155,16 @@
                 document.getElementById('status-stats').textContent =
                     `${formatSize(data.scan_info.total_size)} | ${data.scan_info.total_files} files | ${data.scan_info.total_dirs} dirs`;
             } catch (e) {
-                alert('Error: ' + e.message);
+                if (e.name === 'AbortError') {
+                    document.getElementById('status-text').textContent = 'Scan cancelled';
+                } else {
+                    alert('Error: ' + e.message);
+                }
             } finally {
                 document.getElementById('loading').style.display = 'none';
                 document.getElementById('btn-scan').disabled = false;
+                document.getElementById('btn-cancel').style.display = 'none';
+                abortController = null;
             }
         }
 
@@ -174,6 +187,7 @@
         }
 
         async function autoScanAndZoom(nodePath) {
+            if (abortController) abortController.abort();
             abortController = new AbortController();
 
             document.getElementById('path-input').value = nodePath;
@@ -213,9 +227,24 @@
             }
         }
 
+        async function cancelScan() {
+            try {
+                await fetch('/api/cancel_scan');
+            } catch (e) { /* ignore */ }
+        }
+
         function renderSunburst(data) {
             const container = document.getElementById('chart');
             container.innerHTML = '';
+
+            root = d3.hierarchy(data)
+                .sum(d => (d.type === 'file' || d.type === 'free_space' || d.type === 'other_space') ? d.size : 0)
+                .sort((a, b) => b.value - a.value);
+
+            if (!root.value || root.value === 0) {
+                container.innerHTML = '<div style="color:#888;text-align:center;padding-top:100px;">This folder is empty (no files found)</div>';
+                return;
+            }
 
             svg = d3.select("#chart")
                 .append("svg")
@@ -231,10 +260,6 @@
                 .padRadius(radius / 2)
                 .innerRadius(d => d.y0 * radius / 3)
                 .outerRadius(d => Math.max(d.y0 * radius / 3, d.y1 * radius / 3 - 1));
-
-            root = d3.hierarchy(data)
-                .sum(d => (d.type === 'file' || d.type === 'free_space' || d.type === 'other_space') ? d.size : 0)
-                .sort((a, b) => b.value - a.value);
 
             hierarchy = d3.partition().size([2 * Math.PI, 3])(root);
 
