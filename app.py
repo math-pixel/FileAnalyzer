@@ -13,7 +13,7 @@ from utils import format_size
 
 
 PORT = 8000
-INITIAL_DEPTH = 5
+INITIAL_DEPTH = 3
 
 _cancel_event = threading.Event()
 _cancel_lock = threading.Lock()
@@ -142,7 +142,7 @@ class FileAnalyserHandler(http.server.SimpleHTTPRequestHandler):
 
             tree = scan_directory_iterative(
                 scan_path_obj,
-                max_depth=5,
+                max_depth=3,
                 min_size=None,
                 exclude_patterns=system_exclusions if system_exclusions else None,
                 progress_callback=progress_callback,
@@ -150,7 +150,22 @@ class FileAnalyserHandler(http.server.SimpleHTTPRequestHandler):
                 cancel_check=_is_cancelled,
             )
 
-            self.send_json({"tree": tree, "errors": errors})
+            total_size = tree["size"]
+            total_files, total_dirs = count_items(tree)
+
+            self.send_json({
+                "tree": tree,
+                "errors": errors,
+                "scan_info": {
+                    "root": str(scan_path_obj),
+                    "max_depth": 3,
+                    "total_size": total_size,
+                    "total_size_formatted": format_size(total_size),
+                    "total_files": total_files,
+                    "total_dirs": total_dirs,
+                    "errors_count": len(errors),
+                },
+            })
             return
 
         if path == "/api/cancel_scan":
