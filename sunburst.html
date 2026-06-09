@@ -57,6 +57,7 @@
             <input type="text" id="path-input" placeholder="Enter path to scan (e.g. C:\ or /home)">
             <button id="btn-scan" onclick="startScan()">Scan</button>
 <button id="btn-cancel" onclick="cancelScan()" style="display:none;background:#ef4444;border:none;padding:8px 20px;border-radius:5px;color:#fff;font-weight:bold;cursor:pointer;">Cancel</button>
+<button id="btn-back" onclick="goBack()" style="display:none;background:#6366f1;border:none;padding:8px 20px;border-radius:5px;color:#fff;font-weight:bold;cursor:pointer;">← Back</button>
         </div>
         <div id="status-bar">
             <span id="status-text">Ready</span>
@@ -89,8 +90,9 @@
         let abortController = null;
 
         let svg, arc, root, hierarchy;
-        const width = Math.min(window.innerWidth, window.innerHeight) * 0.85;
-        const radius = width / 2;
+        let width = Math.min(window.innerWidth, window.innerHeight) * 0.85;
+        let radius = width / 2;
+        let scanHistory = [];
 
         function formatSize(bytes) {
             if (bytes === 0) return "0 B";
@@ -137,6 +139,8 @@
             document.getElementById('btn-cancel').style.display = 'inline-block';
             document.getElementById('status-text').textContent = 'Scanning...';
             zoomStack = [];
+            scanHistory = [];
+            document.getElementById('btn-back').style.display = 'none';
 
             try {
                 const resp = await fetch(`/api/scan?path=${encodeURIComponent(path)}&depth=${initialDepth}`, {
@@ -169,6 +173,7 @@
         }
 
         function applyZoom(p) {
+            if (!svg || !arc || !hierarchy) return;
             svg.selectAll("path")
                 .transition().duration(500)
                 .attr("fill-opacity", d => isAncestorOrSelf(p, d) ? 1 : 0.2);
@@ -183,15 +188,25 @@
                 .attr("text-anchor", "middle")
                 .attr("fill", "#000")
                 .attr("font-size", "10px")
-                .text(d => d.data.name.length > 12 ? d.data.name.slice(0,10) + ".." : d.data.name);
+                .text(d => {
+                    if ((d.x1 - d.x0) < 0.12) return '';
+                    return d.data.name.length > 14 ? d.data.name.slice(0, 12) + '..' : d.data.name;
+                });
         }
 
         async function autoScanAndZoom(nodePath) {
             if (abortController) abortController.abort();
             abortController = new AbortController();
 
+            // Save current state for the Back button
+            if (currentPath) {
+                scanHistory.push({ path: currentPath, tree: currentTree });
+                document.getElementById('btn-back').style.display = 'inline-block';
+            }
+
             document.getElementById('path-input').value = nodePath;
             document.getElementById('loading').style.display = 'block';
+            document.getElementById('btn-scan').disabled = true;
             document.getElementById('btn-cancel').style.display = 'inline-block';
             document.getElementById('status-text').textContent = 'Scanning...';
             zoomStack = [];
@@ -222,12 +237,28 @@
                 }
             } finally {
                 document.getElementById('loading').style.display = 'none';
+                document.getElementById('btn-scan').disabled = false;
                 document.getElementById('btn-cancel').style.display = 'none';
                 abortController = null;
             }
         }
 
+        function goBack() {
+            if (scanHistory.length === 0) return;
+            const prev = scanHistory.pop();
+            currentPath = prev.path;
+            currentTree = prev.tree;
+            document.getElementById('path-input').value = currentPath;
+            renderSunburst(currentTree);
+            updateBreadcrumb();
+            updateLegend(currentTree);
+            document.getElementById('status-text').textContent = 'Vue précédente restaurée';
+            document.getElementById('status-stats').textContent = '';
+            document.getElementById('btn-back').style.display = scanHistory.length > 0 ? 'inline-block' : 'none';
+        }
+
         async function cancelScan() {
+            if (abortController) abortController.abort();
             try {
                 await fetch('/api/cancel_scan');
             } catch (e) { /* ignore */ }
@@ -236,6 +267,7 @@
         function renderSunburst(data) {
             const container = document.getElementById('chart');
             container.innerHTML = '';
+            svg = null; arc = null; hierarchy = null;
 
             root = d3.hierarchy(data)
                 .sum(d => (d.type === 'file' || d.type === 'free_space' || d.type === 'other_space') ? d.size : 0)
@@ -304,7 +336,10 @@
                 .attr("text-anchor", "middle")
                 .attr("fill", "#000")
                 .attr("font-size", "10px")
-                .text(d => d.data.name.length > 12 ? d.data.name.slice(0,10) + ".." : d.data.name);
+                .text(d => {
+                    if ((d.x1 - d.x0) < 0.12) return '';
+                    return d.data.name.length > 14 ? d.data.name.slice(0, 12) + '..' : d.data.name;
+                });
         }
 
         function clicked(event, p) {
@@ -328,10 +363,11 @@
         function resetView() {
             zoomStack = [];
             updateBreadcrumb();
+            if (!svg || !arc || !hierarchy) return;
             svg.selectAll("path")
                 .transition().duration(500)
                 .attr("fill-opacity", d => d.depth === 1 ? 1 : 0.7);
-            
+
             svg.selectAll("text").remove();
             svg.selectAll("text")
                 .data(hierarchy.descendants().filter(d => d.depth === 1))
@@ -341,12 +377,17 @@
                 .attr("text-anchor", "middle")
                 .attr("fill", "#000")
                 .attr("font-size", "10px")
-                .text(d => d.data.name.length > 12 ? d.data.name.slice(0,10) + ".." : d.data.name);
+                .text(d => {
+                    if ((d.x1 - d.x0) < 0.12) return '';
+                    return d.data.name.length > 14 ? d.data.name.slice(0, 12) + '..' : d.data.name;
+                });
         }
 
         function updateBreadcrumb() {
             const bc = document.getElementById('breadcrumb');
-            let html = '<span class="root" onclick="resetView()">Root</span>';
+            const rootLabel = currentPath || 'Root';
+            const shortLabel = rootLabel.length > 35 ? '…' + rootLabel.slice(-32) : rootLabel;
+            let html = `<span class="root" onclick="resetView()" title="${rootLabel}">${shortLabel}</span>`;
             for (let i = 0; i < zoomStack.length; i++) {
                 html += `<span class="sep">/</span><span class="crumb" onclick="navigateTo(${i})">${zoomStack[i].data.name}</span>`;
             }
@@ -389,10 +430,11 @@
             const legend = document.getElementById('legend-items');
             const types = getFileTypes(data);
             let html = '';
-            let idx = 0;
             const sorted = Object.entries(types).sort((a, b) => b[1] - a[1]).slice(0, 10);
+            const total = sorted.reduce((s, [, c]) => s + c, 0);
             for (const [type, count] of sorted) {
-                html += `<div class="entry"><div class="color" style="background:${getColor(type, idx++)}"></div>${type}: ${count}</div>`;
+                const pct = total > 0 ? ((count / total) * 100).toFixed(1) : 0;
+                html += `<div class="entry"><span style="color:#4fc3f7;margin-right:6px;font-size:10px;">▪</span>${type}: ${count} (${pct}%)</div>`;
             }
             legend.innerHTML = html || '<div style="color:#888">No files</div>';
         }
@@ -406,6 +448,12 @@
 
         document.getElementById('path-input').addEventListener('keypress', e => {
             if (e.key === 'Enter') startScan();
+        });
+
+        window.addEventListener('resize', () => {
+            width = Math.min(window.innerWidth, window.innerHeight) * 0.85;
+            radius = width / 2;
+            if (currentTree) renderSunburst(currentTree);
         });
 
         loadDrives();

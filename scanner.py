@@ -40,6 +40,24 @@ def _is_junction(path: str) -> bool:
         return False
 
 
+def _propagate_sizes(node: Dict[str, Any]) -> None:
+    """Propagate file sizes from children up to parent directories (post-order, iterative)."""
+    stack: List[Tuple[Dict[str, Any], bool]] = [(node, False)]
+    while stack:
+        current, processed = stack.pop()
+        if current.get("type") == "file":
+            continue
+        if processed:
+            for child in current.get("children", []):
+                if child.get("type") == "dir":
+                    current["size"] += child["size"]
+        else:
+            stack.append((current, True))
+            for child in current.get("children", []):
+                if child.get("type") == "dir":
+                    stack.append((child, False))
+
+
 def scan_directory_iterative(
     root_path: Path,
     max_depth: Optional[int] = None,
@@ -159,19 +177,19 @@ def scan_directory_iterative(
         for ext, count in file_types.items():
             dir_data["file_types"][ext] = dir_data["file_types"].get(ext, 0) + count
 
+    # Assign subdirectory children
     for dir_key, dir_data in dir_data_by_key.items():
         dir_data["children"] = children_map.get(dir_key, [])
-        dir_data["children"].sort(key=lambda x: x["size"], reverse=True)
-
-    for dir_key in list(dir_data_by_key.keys()):
-        for child in children_map.get(dir_key, []):
-            pass
 
     root_data = dir_data_by_key[root_key]
+
+    # Append files and sort all children in a single pass
     for dir_key, dir_data in dir_data_by_key.items():
-        for file_entry in file_map.get(dir_key, []):
-            dir_data["children"].append(file_entry)
+        dir_data["children"].extend(file_map.get(dir_key, []))
         dir_data["children"].sort(key=lambda x: x["size"], reverse=True)
+
+    # Propagate directory sizes bottom-up so every dir reflects its full subtree
+    _propagate_sizes(root_data)
 
     return root_data
 
@@ -294,15 +312,18 @@ def main():
 
 
 def count_items(node: Dict[str, Any]) -> Tuple[int, int]:
+    """Iterative count of files and directories — avoids Python recursion limit."""
     files = 0
     dirs = 0
-    if node["type"] == "file":
-        return 1, 0
-    for child in node.get("children", []):
-        f, d = count_items(child)
-        files += f
-        dirs += d
-    return files, dirs + 1
+    stack: List[Dict[str, Any]] = [node]
+    while stack:
+        current = stack.pop()
+        if current.get("type") == "file":
+            files += 1
+        else:
+            dirs += 1
+            stack.extend(current.get("children", []))
+    return files, dirs
 
 
 if __name__ == "__main__":

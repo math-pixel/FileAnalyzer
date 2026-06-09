@@ -70,7 +70,12 @@ class FileAnalyserHandler(http.server.SimpleHTTPRequestHandler):
                 return
 
             _reset_cancel()
-            max_depth = int(depth) if depth and depth.isdigit() else INITIAL_DEPTH
+            try:
+                max_depth = int(depth)
+                if max_depth < 0:
+                    max_depth = None
+            except (ValueError, TypeError):
+                max_depth = INITIAL_DEPTH
             system_exclusions = [] if no_system == "true" else get_default_exclusions(str(scan_path_obj))
 
             errors: List[Dict[str, Any]] = []
@@ -91,8 +96,10 @@ class FileAnalyserHandler(http.server.SimpleHTTPRequestHandler):
             total_size = tree["size"]
             total_files, total_dirs = count_items(tree)
 
-            from utils import inject_disk_usage
-            tree = inject_disk_usage(tree, scan_path_obj)
+            # Only inject disk-level free/used space for drive root scans
+            if len(str(scan_path_obj)) <= 3:
+                from utils import inject_disk_usage
+                tree = inject_disk_usage(tree, scan_path_obj)
 
             result = {
                 "scan_info": {
