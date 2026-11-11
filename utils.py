@@ -17,7 +17,7 @@ def format_size(bytes_size: Optional[int]) -> str:
     return f"{size:.2f} {units[unit_idx]}"
 
 
-def inject_disk_usage(tree: Dict, path: Path) -> Dict:
+def inject_disk_usage(tree: Dict, path: Path, other_label: str = "Autre espace utilisé") -> Dict:
     try:
         import shutil
         import os
@@ -45,8 +45,8 @@ def inject_disk_usage(tree: Dict, path: Path) -> Dict:
         # Add Other Used Space node
         if other_used > 0:
             other_node = {
-                "name": "Autre espace utilisé",
-                "path": os.path.join(str(path), "Autre espace utilisé"),
+                "name": other_label,
+                "path": os.path.join(str(path), other_label),
                 "type": "other_space",
                 "size": other_used,
                 "children": [],

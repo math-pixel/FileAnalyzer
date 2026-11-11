@@ -45,6 +45,15 @@
         #breadcrumb .root:hover { text-decoration: underline; }
         #progress-bar { position: fixed; bottom: 0; left: 0; right: 0; height: 4px; background: rgba(0,0,0,0.5); }
         #progress-bar .fill { height: 100%; background: #4fc3f7; width: 0%; transition: width 0.3s; }
+        #min-node-select { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #eee; padding: 8px 10px; border-radius: 5px; font-size: 12px; cursor: pointer; }
+        #min-node-select option { background: #1a1a2e; }
+        .scan-phase-badge { font-size: 11px; padding: 2px 8px; border-radius: 10px; margin-left: 8px; vertical-align: middle; }
+        .badge-partial { background: rgba(79,195,247,0.2); color: #4fc3f7; border: 1px solid #4fc3f7; }
+        .badge-full { background: rgba(0,184,148,0.2); color: #00b894; border: 1px solid #00b894; }
+        #advanced-toggle { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #ccc; cursor: pointer; white-space: nowrap; user-select: none; }
+        #advanced-toggle input { accent-color: #f59e0b; width: 15px; height: 15px; cursor: pointer; }
+        #advanced-toggle.on { color: #f59e0b; }
+        #info .hint { color: #f59e0b; font-size: 12px; margin-top: 6px; line-height: 1.4; }
     </style>
 </head>
 <body>
@@ -55,6 +64,16 @@
                 <button class="drive-btn" onclick="document.getElementById('path-input').value='C:\\';startScan();">C:\</button>
             </div>
             <input type="text" id="path-input" placeholder="Enter path to scan (e.g. C:\ or /home)">
+            <select id="min-node-select" title="Regrouper les petits fichiers">
+                <option value="">Tous les fichiers</option>
+                <option value="1024">Ignorer &lt; 1 Ko</option>
+                <option value="102400">Ignorer &lt; 100 Ko</option>
+                <option value="1048576">Ignorer &lt; 1 Mo</option>
+                <option value="10485760">Ignorer &lt; 10 Mo</option>
+            </select>
+            <label id="advanced-toggle" title="Analyse avancée : inclut les dossiers système (Windows, Program Files…) et parcourt toute la profondeur. Plus lent, mais presque tout l'espace est détaillé au lieu d'être regroupé dans « Autre espace utilisé ». Lancez le serveur en administrateur pour accéder aux dossiers protégés.">
+                <input type="checkbox" id="advanced-input"> Analyse avancée
+            </label>
             <button id="btn-scan" onclick="startScan()">Scan</button>
 <button id="btn-cancel" onclick="cancelScan()" style="display:none;background:#ef4444;border:none;padding:8px 20px;border-radius:5px;color:#fff;font-weight:bold;cursor:pointer;">Cancel</button>
 <button id="btn-back" onclick="goBack()" style="display:none;background:#6366f1;border:none;padding:8px 20px;border-radius:5px;color:#fff;font-weight:bold;cursor:pointer;">← Back</button>
@@ -74,6 +93,7 @@
             <div class="size" id="info-size">-</div>
             <div class="type" id="info-type">-</div>
             <div class="path" id="info-path">-</div>
+            <div class="hint" id="info-hint" style="display:none"></div>
         </div>
         <div id="legend">
             <h3>File Types</h3>
@@ -88,6 +108,7 @@
         let initialDepth = 5;
         let zoomStack = [];
         let abortController = null;
+        let eventSource = null;
 
         let svg, arc, root, hierarchy;
         let width = Math.min(window.innerWidth, window.innerHeight) * 0.85;
@@ -101,6 +122,24 @@
             let size = bytes;
             while (size >= 1024 && idx < units.length - 1) { size /= 1024; idx++; }
             return size.toFixed(idx === 0 ? 0 : 2) + " " + units[idx];
+        }
+
+        function isAdvanced() {
+            return document.getElementById('advanced-input').checked;
+        }
+
+        function scanQuery(path) {
+            let q = `path=${encodeURIComponent(path)}`;
+            const minNodeSize = document.getElementById('min-node-select').value;
+            if (minNodeSize) q += `&min_node_size=${encodeURIComponent(minNodeSize)}`;
+            if (isAdvanced()) q += '&advanced=true';
+            return q;
+        }
+
+        function statsText(info) {
+            let s = `${formatSize(info.total_size)} | ${info.total_files.toLocaleString()} fichiers | ${info.total_dirs.toLocaleString()} dossiers`;
+            if (info.errors_count) s += ` | ${info.errors_count} inaccessibles`;
+            return s;
         }
 
         function getColor(name, index) {
@@ -127,49 +166,86 @@
             } catch (e) { console.error(e); }
         }
 
-        async function startScan() {
+        function startScan() {
             const path = document.getElementById('path-input').value.trim();
             if (!path) return;
 
-            if (abortController) abortController.abort();
-            abortController = new AbortController();
+            // Close any existing stream / abort in-flight request
+            if (eventSource) { eventSource.close(); eventSource = null; }
+            if (abortController) { abortController.abort(); abortController = null; }
+
+            const advanced = isAdvanced();
 
             document.getElementById('loading').style.display = 'block';
             document.getElementById('btn-scan').disabled = true;
             document.getElementById('btn-cancel').style.display = 'inline-block';
-            document.getElementById('status-text').textContent = 'Scanning...';
+            document.getElementById('status-text').innerHTML = advanced
+                ? 'Analyse avancée en cours… (peut prendre plusieurs minutes)'
+                : 'Scan en cours…';
+            document.getElementById('status-stats').textContent = '';
             zoomStack = [];
             scanHistory = [];
             document.getElementById('btn-back').style.display = 'none';
 
-            try {
-                const resp = await fetch(`/api/scan?path=${encodeURIComponent(path)}&depth=${initialDepth}`, {
-                    signal: abortController.signal
-                });
-                const data = await resp.json();
+            function finishScan() {
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('btn-scan').disabled = false;
+                document.getElementById('btn-cancel').style.display = 'none';
+                if (eventSource) { eventSource.close(); eventSource = null; }
+            }
 
-                if (data.error) { alert(data.error); return; }
+            eventSource = new EventSource(`/api/scan/stream?${scanQuery(path)}`);
 
+            eventSource.addEventListener('partial', e => {
+                const data = JSON.parse(e.data);
+                if (data.error) { alert(data.error); finishScan(); return; }
                 currentPath = path;
                 currentTree = data.tree;
                 renderSunburst(currentTree);
                 updateBreadcrumb();
                 updateLegend(currentTree);
-                document.getElementById('status-text').textContent = 'Scan complete';
-                document.getElementById('status-stats').textContent =
-                    `${formatSize(data.scan_info.total_size)} | ${data.scan_info.total_files} files | ${data.scan_info.total_dirs} dirs`;
-            } catch (e) {
-                if (e.name === 'AbortError') {
-                    document.getElementById('status-text').textContent = 'Scan cancelled';
-                } else {
-                    alert('Error: ' + e.message);
+                document.getElementById('status-text').innerHTML =
+                    'Aperçu rapide <span class="scan-phase-badge badge-partial">profondeur 2</span>';
+                document.getElementById('status-stats').textContent = statsText(data.scan_info);
+                // Keep loading visible but update message
+                document.getElementById('loading').style.display = 'block';
+            });
+
+            eventSource.addEventListener('progress', e => {
+                const data = JSON.parse(e.data);
+                document.getElementById('status-text').innerHTML =
+                    `Scan complet en cours… <span style="color:#4fc3f7">${(data.files_scanned || 0).toLocaleString()} fichiers</span>`;
+            });
+
+            eventSource.addEventListener('done', e => {
+                const data = JSON.parse(e.data);
+                if (data.error) { alert(data.error); finishScan(); return; }
+                currentPath = path;
+                currentTree = data.tree;
+                renderSunburst(currentTree);
+                updateBreadcrumb();
+                updateLegend(currentTree);
+                document.getElementById('status-text').innerHTML = data.scan_info.advanced
+                    ? 'Scan terminé <span class="scan-phase-badge badge-full">avancé · complet</span>'
+                    : 'Scan terminé <span class="scan-phase-badge badge-full">profondeur 5</span>';
+                document.getElementById('status-stats').textContent = statsText(data.scan_info);
+                finishScan();
+            });
+
+            eventSource.addEventListener('cancelled', () => {
+                document.getElementById('status-text').textContent = 'Scan annulé';
+                finishScan();
+            });
+
+            eventSource.addEventListener('error', e => {
+                // onerror fires on normal stream close too; ignore if already done
+                if (eventSource && eventSource.readyState === EventSource.CLOSED) {
+                    finishScan();
+                    return;
                 }
-            } finally {
-                document.getElementById('loading').style.display = 'none';
-                document.getElementById('btn-scan').disabled = false;
-                document.getElementById('btn-cancel').style.display = 'none';
-                abortController = null;
-            }
+                document.getElementById('status-text').textContent = 'Erreur de connexion';
+                finishScan();
+            });
         }
 
         function applyZoom(p) {
@@ -195,6 +271,8 @@
         }
 
         async function autoScanAndZoom(nodePath) {
+            // Close any existing stream
+            if (eventSource) { eventSource.close(); eventSource = null; }
             if (abortController) abortController.abort();
             abortController = new AbortController();
 
@@ -208,13 +286,11 @@
             document.getElementById('loading').style.display = 'block';
             document.getElementById('btn-scan').disabled = true;
             document.getElementById('btn-cancel').style.display = 'inline-block';
-            document.getElementById('status-text').textContent = 'Scanning...';
+            document.getElementById('status-text').textContent = 'Scan en cours…';
             zoomStack = [];
 
             try {
-                const resp = await fetch(`/api/scan_dir?path=${encodeURIComponent(nodePath)}`, {
-                    signal: abortController.signal
-                });
+                const resp = await fetch(`/api/scan_dir?${scanQuery(nodePath)}`, { signal: abortController.signal });
                 const data = await resp.json();
 
                 if (data.error) { alert(data.error); return; }
@@ -224,14 +300,13 @@
                 renderSunburst(currentTree);
                 updateBreadcrumb();
                 updateLegend(currentTree);
-                document.getElementById('status-text').textContent = 'Scan complete';
+                document.getElementById('status-text').textContent = 'Scan terminé';
                 if (data.scan_info) {
-                    document.getElementById('status-stats').textContent =
-                        `${formatSize(data.scan_info.total_size)} | ${data.scan_info.total_files} files | ${data.scan_info.total_dirs} dirs`;
+                    document.getElementById('status-stats').textContent = statsText(data.scan_info);
                 }
             } catch (e) {
                 if (e.name === 'AbortError') {
-                    document.getElementById('status-text').textContent = 'Scan cancelled';
+                    document.getElementById('status-text').textContent = 'Scan annulé';
                 } else {
                     alert('Error: ' + e.message);
                 }
@@ -258,10 +333,16 @@
         }
 
         async function cancelScan() {
-            if (abortController) abortController.abort();
+            // Close SSE stream first so the browser stops reading
+            if (eventSource) { eventSource.close(); eventSource = null; }
+            if (abortController) { abortController.abort(); abortController = null; }
             try {
                 await fetch('/api/cancel_scan');
             } catch (e) { /* ignore */ }
+            document.getElementById('status-text').textContent = 'Scan annulé';
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('btn-scan').disabled = false;
+            document.getElementById('btn-cancel').style.display = 'none';
         }
 
         function renderSunburst(data) {
@@ -270,7 +351,9 @@
             svg = null; arc = null; hierarchy = null;
 
             root = d3.hierarchy(data)
-                .sum(d => (d.type === 'file' || d.type === 'free_space' || d.type === 'other_space') ? d.size : 0)
+                // Leaves carry their own size: files, disk-usage nodes, and folders
+                // collapsed by the advanced scan (no children but a full subtree size)
+                .sum(d => (d.children && d.children.length) ? 0 : (d.size || 0))
                 .sort((a, b) => b.value - a.value);
 
             if (!root.value || root.value === 0) {
@@ -299,9 +382,9 @@
             let colorIdx = 0;
             root.each(d => {
                 if (!colorMap[d.data.name]) {
-                    if (d.data.name === "Espace libre" || d.data.name === "Free Space") {
+                    if (d.data.type === 'free_space') {
                         colorMap[d.data.name] = "#10b981"; // Vibrant Emerald green
-                    } else if (d.data.name === "Autre espace utilisé" || d.data.name === "Other used space") {
+                    } else if (d.data.type === 'other_space') {
                         colorMap[d.data.name] = "#64748b"; // Slate gray
                     } else {
                         colorMap[d.data.name] = getColor(d.data.name, colorIdx++);
@@ -408,10 +491,22 @@
             document.getElementById('info-size').textContent = formatSize(p.value);
             document.getElementById('info-path').textContent = p.data.path || '-';
             let typeStr = 'File';
-            if (p.data.type === 'dir') typeStr = 'Folder';
-            else if (p.data.type === 'free_space') typeStr = 'Espace libre';
-            else if (p.data.type === 'other_space') typeStr = 'Autre espace utilisé';
+            let hint = '';
+            if (p.data.type === 'dir') {
+                typeStr = 'Folder';
+                if (p.data.collapsed && p.value > 0) hint = 'Contenu regroupé — cliquez pour le détailler.';
+            } else if (p.data.type === 'free_space') {
+                typeStr = 'Espace libre';
+            } else if (p.data.type === 'other_space') {
+                typeStr = p.data.name;
+                hint = isAdvanced()
+                    ? 'Espace que le scan n\'a pas pu lire : dossiers protégés, métadonnées NTFS, points de restauration, espace perdu en fin de cluster. Lancez le serveur en administrateur pour en réduire une partie.'
+                    : 'Dossiers système exclus et contenu au-delà de 5 niveaux. Activez « Analyse avancée » pour le détailler.';
+            }
             document.getElementById('info-type').textContent = 'Type: ' + typeStr + (p.data.type === 'file' && p.data.extension ? ' (' + p.data.extension + ')' : '');
+            const hintEl = document.getElementById('info-hint');
+            hintEl.textContent = hint;
+            hintEl.style.display = hint ? 'block' : 'none';
 
             let x = event.clientX + 15;
             let y = event.clientY + 15;
@@ -428,7 +523,8 @@
 
         function updateLegend(data) {
             const legend = document.getElementById('legend-items');
-            const types = getFileTypes(data);
+            // Server-side totals cover every scanned file, including merged/collapsed ones
+            const types = data.file_types_total || getFileTypes(data);
             let html = '';
             const sorted = Object.entries(types).sort((a, b) => b[1] - a[1]).slice(0, 10);
             const total = sorted.reduce((s, [, c]) => s + c, 0);
@@ -454,6 +550,10 @@
             width = Math.min(window.innerWidth, window.innerHeight) * 0.85;
             radius = width / 2;
             if (currentTree) renderSunburst(currentTree);
+        });
+
+        document.getElementById('advanced-input').addEventListener('change', e => {
+            document.getElementById('advanced-toggle').classList.toggle('on', e.target.checked);
         });
 
         loadDrives();
